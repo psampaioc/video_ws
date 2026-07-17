@@ -1,0 +1,42 @@
+# Build artifacts
+build/
+install/
+log/
+*.so
+*.a
+*.os
+
+# ROS 2 specific
+*.pyc
+__pycache__/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# AI Agent Configuration (NEVER commit)
+.claude/
+CLAUDE.md
+.claude-code/
+
+# Docker
+.dockerignore
+
+# Local config
+config/local.yaml
+*.local.yaml
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.egg-info/
+dist/
+.venv/
+venv/
