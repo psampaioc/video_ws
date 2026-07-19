@@ -96,7 +96,7 @@ docker run -d --rm \
   --name ros2_dev \
   --net=host --ipc=host --pid=host \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v /home/psampaioc/Workspaces:/workspace \
+  -v /workspace:/workspace \
   -w /workspace/video_ws \
   rosstudy_env:jazzy \
   sleep infinity
@@ -202,7 +202,7 @@ docker run -d --rm \
   --name ros2_test \
   --net=host --ipc=host --pid=host \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v /home/psampaioc/Workspaces:/workspace \
+  -v /workspace:/workspace \
   -w /workspace/video_ws \
   rosstudy_env:jazzy \
   sleep infinity
