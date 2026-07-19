@@ -4,7 +4,7 @@
   <name>hdmi_camera_driver</name>
   <version>0.1.0</version>
   <description>HDMI camera driver node publishing raw frames to /camera/image_raw with master timestamp</description>
-  <maintainer email="psampaioc@todo.todo">psampaioc</maintainer>
+  <maintainer email="video-ws@users.noreply.github.com">video-ws maintainers</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

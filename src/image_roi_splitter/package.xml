@@ -3,8 +3,8 @@
 <package format="3">
   <name>image_roi_splitter</name>
   <version>0.1.0</version>
-  <description>Image ROI splitter node: crops RGB and telemetry ROIs from camera feed</description>
-  <maintainer email="psampaioc@users.noreply.github.com">Pedro Sampaio</maintainer>
+  <description>ROI cropper and router for HDMI camera stream: extracts RGB screen and telemetry (lat/lon) regions</description>
+  <maintainer email="video-ws@users.noreply.github.com">video-ws maintainers</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
