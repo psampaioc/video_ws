@@ -17,7 +17,14 @@ CameraPublisherNode::CameraPublisherNode() : Node("camera_publisher_node")
   height = this->get_parameter("height").as_int();
   fps = this->get_parameter("fps").as_double();
 
-  cap_.open(device_path, cv::CAP_V4L2);
+  int api_preference = cv::CAP_ANY;
+
+      // Se for hardware, força V4L2 para minimizar latência. Se for ficheiro, usa o descodificador automático.
+      if (device_path.find("/dev/video") == 0) {
+        api_preference = cv::CAP_V4L2;
+      }
+
+      cap_.open(device_path, api_preference);
   if (!cap_.isOpened()) {
     RCLCPP_ERROR(this->get_logger(), "Failed to open video device: %s", device_path.c_str());
     return;

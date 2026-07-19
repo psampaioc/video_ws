@@ -40,3 +40,9 @@ Thumbs.db
 dist/
 .venv/
 venv/
+
+# Dataset - personal/private data (videos, images, calibration)
+dataset/
+
+# Memory/search index (generated)
+.memsearch/

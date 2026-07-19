@@ -11,7 +11,7 @@ RoiSplitterNode::RoiSplitterNode() : Node("roi_splitter_node")
   pub_rgb_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/rgb_roi", 10);
   pub_loc_ = this->create_publisher<sensor_msgs::msg::Image>("/telemetry/location_roi", 10);
 
-  RCLCPP_INFO(this->get_logger(), "ROI Splitter Node iniciado. ROIs hardcoded temporariamente.");
+  RCLCPP_INFO(this->get_logger(), "ROI Splitter Node iniciado. ROIs calibrados (1920x1080).");
 }
 
 void RoiSplitterNode::image_callback(const sensor_msgs::msg::Image::SharedPtr msg)
@@ -26,14 +26,15 @@ void RoiSplitterNode::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
 
   cv::Mat raw_img = cv_ptr->image;
 
-  // --- PLACEHOLDERS HARDCODED ---
-  cv::Rect rgb_rect(0, 0, 640, 480);
-  cv::Rect lat_rect(0, 0, 100, 50);
-  cv::Rect lon_rect(0, 50, 100, 50);
+  // ROIs calibrados a partir de resolution_image_live.png (1920x1080)
+  cv::Rect rgb_rect(240, 69, 1439, 876);        // Tela principal RGB
+  cv::Rect lat_rect(840, 1048, 185, 28);        // Texto latitude
+  cv::Rect lon_rect(1032, 1047, 163, 29);       // Texto longitude
 
-  // Protecao de dimensoes
-  if (raw_img.cols <= rgb_rect.x + rgb_rect.width || raw_img.rows <= rgb_rect.y + rgb_rect.height) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+  if (raw_img.cols <= rgb_rect.x + rgb_rect.width || raw_img.rows <= rgb_rect.y + rgb_rect.height ||
+      raw_img.cols <= lat_rect.x + lat_rect.width || raw_img.rows <= lat_rect.y + lat_rect.height ||
+      raw_img.cols <= lon_rect.x + lon_rect.width || raw_img.rows <= lon_rect.y + lon_rect.height) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
                          "Dimensoes da imagem incompativeis com as ROIs. Aguardando calibracao.");
     return;
   }
@@ -41,6 +42,11 @@ void RoiSplitterNode::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
   cv::Mat crop_rgb = raw_img(rgb_rect);
   cv::Mat crop_lat = raw_img(lat_rect);
   cv::Mat crop_lon = raw_img(lon_rect);
+
+  // Redimensiona longitude para largura da latitude antes de empilhar (vconcat exige mesma largura)
+  if (crop_lat.cols != crop_lon.cols) {
+    cv::resize(crop_lon, crop_lon, cv::Size(crop_lat.cols, crop_lon.rows));
+  }
 
   cv::Mat crop_loc;
   cv::vconcat(crop_lat, crop_lon, crop_loc);
