@@ -183,11 +183,19 @@ docker exec -it ros2_dev bash
 source /opt/ros/jazzy/setup.bash
 source /workspace/video_ws/install/setup.bash
 
-# RGB screen view
-ros2 run image_view image_view image:=/camera/rgb_roi
+# Open rqt GUI, then: Plugins > Visualization > Image View
+rqt
 
-# Telemetry stack (latitude on top, longitude below)
-ros2 run image_view image_view image:=/telemetry/location_roi
+# In the Image View plugin dropdown, select:
+# /camera/rgb_roi          — RGB screen view
+# /telemetry/location_roi  — Latitude + Longitude stacked
+```
+
+**Alternative (command-line):**
+```bash
+# Save single frame to file (no GUI needed)
+ros2 run image_tools image_saver image:=/camera/rgb_roi _filename:=rgb_frame.png
+ros2 run image_tools image_saver image:=/telemetry/location_roi _filename:=telemetry_frame.png
 ```
 
 ---
