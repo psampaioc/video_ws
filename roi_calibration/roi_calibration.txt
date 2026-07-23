@@ -1,0 +1,7 @@
+# Calibração ROIs - resolution_22_07_26.png
+# Resolução: 640x480
+# Formato: nome x y w h
+
+rgb_roi: 81 61 478 361
+latitude_roi: 280 468 61 11
+longitude_roi: 345 467 54 11
