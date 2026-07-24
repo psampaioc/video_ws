@@ -42,7 +42,7 @@ dist/
 venv/
 
 # Dataset - personal/private data (videos, images, calibration)
-dataset/
+dataset_22-07-26/
 
 # Memory/search index (generated)
 .memsearch/
