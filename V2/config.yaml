@@ -1,0 +1,10 @@
+/unified_vision_node:
+  ros__parameters:
+    input_mode: "topic"
+    device_path: "/dev/video4"
+    roi_rgb: [80, 60, 480, 360]
+    roi_lat: [280, 467, 62, 11]
+    roi_lon: [344, 467, 59, 12]
+    roi_heading: [210, 467, 23, 12]
+    roi_height: [278, 422, 37, 20]
+    roi_speed: [213, 446, 28, 16]

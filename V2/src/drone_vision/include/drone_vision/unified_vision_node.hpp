@@ -47,6 +47,9 @@ private:
     cv::Rect rgb_roi_;
     cv::Rect lat_roi_;
     cv::Rect lon_roi_;
+    cv::Rect head_roi_;
+    cv::Rect height_roi_;
+    cv::Rect speed_roi_;
 
     // Hardware Capture
     cv::VideoCapture cap_;
@@ -58,6 +61,12 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr rgb_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr lat_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr lon_pub_;
+
+    // Novos Publishers para os recortes
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr head_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr height_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr speed_pub_;
+
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr telemetry_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr ts_pub_; // Troubleshooting
 

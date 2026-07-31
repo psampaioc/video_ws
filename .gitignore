@@ -1,3 +1,5 @@
+*.png
+
 # Build artifacts
 build/
 install/
@@ -43,6 +45,9 @@ venv/
 
 # Dataset - personal/private data (videos, images, calibration)
 dataset_22-07-26/
+dataset_rgb_tel
+rsync_log.txt
+
 
 # Memory/search index (generated)
 .memsearch/

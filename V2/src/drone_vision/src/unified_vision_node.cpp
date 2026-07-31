@@ -10,18 +10,13 @@ using json = nlohmann::json;
 
 // --- Implementação: TelemetryOcr ---
 TelemetryOcr::TelemetryOcr(const std::string& model_path, const std::string& dict_path)
-    : env_(ORT_LOGGING_LEVEL_WARNING, "TelemetryOcr"),
+    : env_(ORT_LOGGING_LEVEL_ERROR, "TelemetryOcr"), // <-- FIXED: Terminal limpo
       memory_info_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU))
 {
     loadDictionary(dict_path);
 
-    // Forçar apenas 1 thread por inferência
     session_options_.SetIntraOpNumThreads(1);
-
-    // Desativar a otimização de grafos do ONNX para evitar conflitos de dimensões dinâmicas
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
-
-    // Iniciar sessão
     session_ = std::make_unique<Ort::Session>(env_, model_path.c_str(), session_options_);
 
     input_node_names_ = {"x"};
@@ -121,6 +116,12 @@ UnifiedVisionNode::UnifiedVisionNode() : Node("unified_vision_node"), running_(t
     rgb_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/rgb_roi", 10);
     lat_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/lat_roi", 10);
     lon_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/lon_roi", 10);
+
+    // <-- ADICIONADO: Novos Tópicos para o RQT
+    head_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/heading_roi", 10);
+    height_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/height_roi", 10);
+    speed_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/speed_roi", 10);
+
     telemetry_pub_ = this->create_publisher<std_msgs::msg::String>("/telemetry/data", 10);
     ts_pub_ = this->create_publisher<std_msgs::msg::String>("/troubleshooting", 10);
 
@@ -138,8 +139,6 @@ UnifiedVisionNode::UnifiedVisionNode() : Node("unified_vision_node"), running_(t
         RCLCPP_INFO(this->get_logger(), "Modo Event-Driven (Tópico). Aguardando playback de mcap em /camera/image_raw");
         image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
             "/camera/image_raw", 10, std::bind(&UnifiedVisionNode::topicCallback, this, std::placeholders::_1));
-    } else {
-        RCLCPP_ERROR(this->get_logger(), "input_mode inválido. Escolha 'hardware' ou 'topic'.");
     }
 }
 
@@ -159,16 +158,27 @@ void UnifiedVisionNode::loadParameters() {
     this->declare_parameter<std::vector<int64_t>>("roi_lat", {280, 468, 61, 11});
     this->declare_parameter<std::vector<int64_t>>("roi_lon", {345, 467, 54, 11});
 
+    // <-- ADICIONADO: Placeholders de coordenadas (Ajusta os valores)
+    this->declare_parameter<std::vector<int64_t>>("roi_heading", {0, 0, 50, 20});
+    this->declare_parameter<std::vector<int64_t>>("roi_height", {0, 0, 50, 20});
+    this->declare_parameter<std::vector<int64_t>>("roi_speed", {0, 0, 50, 20});
+
     input_mode_ = this->get_parameter("input_mode").as_string();
     device_path_ = this->get_parameter("device_path").as_string();
 
     auto r_rgb = this->get_parameter("roi_rgb").as_integer_array();
     auto r_lat = this->get_parameter("roi_lat").as_integer_array();
     auto r_lon = this->get_parameter("roi_lon").as_integer_array();
+    auto r_head = this->get_parameter("roi_heading").as_integer_array();
+    auto r_height = this->get_parameter("roi_height").as_integer_array();
+    auto r_speed = this->get_parameter("roi_speed").as_integer_array();
 
     rgb_roi_ = cv::Rect(r_rgb[0], r_rgb[1], r_rgb[2], r_rgb[3]);
     lat_roi_ = cv::Rect(r_lat[0], r_lat[1], r_lat[2], r_lat[3]);
     lon_roi_ = cv::Rect(r_lon[0], r_lon[1], r_lon[2], r_lon[3]);
+    head_roi_ = cv::Rect(r_head[0], r_head[1], r_head[2], r_head[3]);
+    height_roi_ = cv::Rect(r_height[0], r_height[1], r_height[2], r_height[3]);
+    speed_roi_ = cv::Rect(r_speed[0], r_speed[1], r_speed[2], r_speed[3]);
 }
 
 void UnifiedVisionNode::logTroubleshooting(const std::string& msg) {
@@ -228,30 +238,43 @@ void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
         publishImage(frame(rgb_roi_), rgb_pub_, stamp, "bgr8");
     }
 
-    std::string lat_result = "N/A";
-    std::string lon_result = "N/A";
+    std::string lat_result = "N/A", lon_result = "N/A";
+    std::string head_result = "N/A", height_result = "N/A", speed_result = "N/A";
 
     bool lat_safe = isRectSafe(lat_roi_, frame, "LAT_ROI");
     bool lon_safe = isRectSafe(lon_roi_, frame, "LON_ROI");
+    bool head_safe = isRectSafe(head_roi_, frame, "HEADING_ROI");
+    bool height_safe = isRectSafe(height_roi_, frame, "HEIGHT_ROI");
+    bool speed_safe = isRectSafe(speed_roi_, frame, "SPEED_ROI");
 
-    if (lat_safe && lon_safe) {
-        publishImage(frame(lat_roi_), lat_pub_, stamp, "bgr8");
-        publishImage(frame(lon_roi_), lon_pub_, stamp, "bgr8");
+    // <-- ADICIONADO: Publica os novos recortes para o RQT
+    if (lat_safe) publishImage(frame(lat_roi_), lat_pub_, stamp, "bgr8");
+    if (lon_safe) publishImage(frame(lon_roi_), lon_pub_, stamp, "bgr8");
+    if (head_safe) publishImage(frame(head_roi_), head_pub_, stamp, "bgr8");
+    if (height_safe) publishImage(frame(height_roi_), height_pub_, stamp, "bgr8");
+    if (speed_safe) publishImage(frame(speed_roi_), speed_pub_, stamp, "bgr8");
 
-        if (ocr_) {
-            try {
-                lat_result = ocr_->recognize(frame(lat_roi_));
-                lon_result = ocr_->recognize(frame(lon_roi_));
-            } catch (const std::exception& e) {
-                logTroubleshooting("Crash na Inferência OCR: " + std::string(e.what()));
-            }
+    // <-- ADICIONADO: Executa OCR nos novos campos
+    if (ocr_) {
+        try {
+            if (lat_safe) lat_result = ocr_->recognize(frame(lat_roi_));
+            if (lon_safe) lon_result = ocr_->recognize(frame(lon_roi_));
+            if (head_safe) head_result = ocr_->recognize(frame(head_roi_));
+            if (height_safe) height_result = ocr_->recognize(frame(height_roi_));
+            if (speed_safe) speed_result = ocr_->recognize(frame(speed_roi_));
+        } catch (const std::exception& e) {
+            logTroubleshooting("Crash na Inferência OCR: " + std::string(e.what()));
         }
     }
 
+    // <-- ADICIONADO: Injeta tudo no JSON final
     json telemetry_json;
     telemetry_json["timestamp"] = stamp.seconds();
     telemetry_json["telemetry"]["latitude"] = lat_result;
     telemetry_json["telemetry"]["longitude"] = lon_result;
+    telemetry_json["telemetry"]["heading"] = head_result;
+    telemetry_json["telemetry"]["height"] = height_result;
+    telemetry_json["telemetry"]["speed"] = speed_result;
 
     auto msg_tel = std_msgs::msg::String();
     msg_tel.data = telemetry_json.dump();
