@@ -5,23 +5,37 @@
 #include <fstream>
 #include <numeric>
 #include <algorithm>
+#include <opencv2/imgproc.hpp>
+#include <onnxruntime_cxx_api.h>
 
 using json = nlohmann::json;
 
 // --- Implementação: TelemetryOcr ---
 TelemetryOcr::TelemetryOcr(const std::string& model_path, const std::string& dict_path)
-    : env_(ORT_LOGGING_LEVEL_ERROR, "TelemetryOcr"), // <-- FIXED: Terminal limpo
+    : env_(ORT_LOGGING_LEVEL_WARNING, "TelemetryOcr"),
       memory_info_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU))
 {
     loadDictionary(dict_path);
 
-    session_options_.SetIntraOpNumThreads(1);
-    session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    session_options_.SetIntraOpNumThreads(4);
+    session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+    // MANTEMOS O CUDA PURO PARA COMPARAR ALHOS COM ALHOS
+    OrtCUDAProviderOptions cuda_options;
+    cuda_options.device_id = 0;
+    cuda_options.arena_extend_strategy = 0;
+    cuda_options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
+    cuda_options.do_copy_in_default_stream = 1;
+
+    try {
+        session_options_.AppendExecutionProvider_CUDA(cuda_options);
+    } catch (const std::exception& e) {
+    }
+
     session_ = std::make_unique<Ort::Session>(env_, model_path.c_str(), session_options_);
 
     input_node_names_ = {"x"};
     output_node_names_ = {"fetch_name_0"};
-    input_node_dims_ = {1, 3, 48, -1};
 }
 
 void TelemetryOcr::loadDictionary(const std::string& dict_path) {
@@ -34,78 +48,105 @@ void TelemetryOcr::loadDictionary(const std::string& dict_path) {
     dictionary_.push_back(" ");
 }
 
-std::vector<float> TelemetryOcr::preprocess(const cv::Mat& img, int& target_width) {
-    cv::Mat rgb, resized;
-    cv::cvtColor(img, rgb, cv::COLOR_BGR2RGB);
+std::vector<std::string> TelemetryOcr::recognizeBatch(const std::vector<cv::Mat>& rois) {
+    int batch_size = 0;
+    std::vector<cv::Mat> valid_rois;
+    std::vector<int> original_indices;
 
-    float ratio = (float)rgb.cols / (float)rgb.rows;
-    target_width = static_cast<int>(48 * ratio);
-    target_width = std::max(32, int(std::ceil(target_width / 32.0f) * 32));
-    cv::resize(rgb, resized, cv::Size(target_width, 48));
-
-    resized.convertTo(resized, CV_32FC3, 1.0 / 127.5, -1.0);
-
-    std::vector<cv::Mat> channels(3);
-    cv::split(resized, channels);
-
-    std::vector<float> input_tensor_values;
-    input_tensor_values.reserve(3 * 48 * target_width);
-    for (int c = 0; c < 3; ++c) {
-        input_tensor_values.insert(input_tensor_values.end(),
-                                   (float*)channels[c].datastart,
-                                   (float*)channels[c].dataend);
+    // 1. Filtrar ROIs vazias
+    for (size_t i = 0; i < rois.size(); ++i) {
+        if (!rois[i].empty()) {
+            valid_rois.push_back(rois[i]);
+            original_indices.push_back(i);
+            batch_size++;
+        }
     }
-    return input_tensor_values;
-}
 
-std::string TelemetryOcr::recognize(const cv::Mat& roi) {
-    if (roi.empty()) return "N/A";
+    std::vector<std::string> results(rois.size(), "N/A");
+    if (batch_size == 0) return results;
 
-    int target_width;
-    std::vector<float> input_tensor_values = preprocess(roi, target_width);
-    input_node_dims_[3] = target_width;
+    // 2. Encontrar a largura máxima para o Padding
+    int max_width = 0;
+    std::vector<cv::Mat> resized_rois;
+    resized_rois.reserve(batch_size);
 
+    for (const auto& img : valid_rois) {
+        cv::Mat rgb, resized;
+        cv::cvtColor(img, rgb, cv::COLOR_BGR2RGB);
+        float ratio = (float)rgb.cols / (float)rgb.rows;
+        int target_width = static_cast<int>(48 * ratio);
+        target_width = std::max(32, int(std::ceil(target_width / 32.0f) * 32));
+        cv::resize(rgb, resized, cv::Size(target_width, 48));
+        resized.convertTo(resized, CV_32FC3, 1.0 / 127.5, -1.0); // Fundo a -1.0
+        resized_rois.push_back(resized);
+        if (target_width > max_width) max_width = target_width;
+    }
+
+    // 3. Achatar canais e aplicar Padding
+    std::vector<float> input_tensor_values;
+    input_tensor_values.reserve(batch_size * 3 * 48 * max_width);
+
+    for (const auto& resized : resized_rois) {
+        cv::Mat padded;
+        if (resized.cols < max_width) {
+            // Padding à direita com valor -1.0
+            cv::copyMakeBorder(resized, padded, 0, 0, 0, max_width - resized.cols,
+                               cv::BORDER_CONSTANT, cv::Scalar(-1.0, -1.0, -1.0));
+        } else {
+            padded = resized;
+        }
+
+        std::vector<cv::Mat> channels(3);
+        cv::split(padded, channels);
+        for (int c = 0; c < 3; ++c) {
+            input_tensor_values.insert(input_tensor_values.end(),
+                                       (float*)channels[c].datastart,
+                                       (float*)channels[c].dataend);
+        }
+    }
+
+    // 4. Construir Tensor e Inferir
+    std::vector<int64_t> input_dims = {batch_size, 3, 48, max_width};
     auto input_tensor = Ort::Value::CreateTensor<float>(
         memory_info_, input_tensor_values.data(), input_tensor_values.size(),
-        input_node_dims_.data(), input_node_dims_.size());
+        input_dims.data(), input_dims.size());
 
     auto output_tensors = session_->Run(
         Ort::RunOptions{nullptr},
         input_node_names_.data(), &input_tensor, 1,
         output_node_names_.data(), 1);
 
+    // 5. Pós-processamento Desacoplado [b, seq, classes]
     float* out_data = output_tensors[0].GetTensorMutableData<float>();
     auto out_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
 
-    return postprocess(out_data, out_shape);
-}
-
-std::string TelemetryOcr::postprocess(const float* out_data, const std::vector<int64_t>& out_shape) {
     int64_t seq_len = out_shape[1];
     int64_t num_classes = out_shape[2];
 
-    std::string result = "";
-    int last_index = 0;
+    for (int b = 0; b < batch_size; ++b) {
+        std::string result = "";
+        int last_index = 0;
 
-    for (int64_t i = 0; i < seq_len; ++i) {
-        int best_idx = 0;
-        float max_prob = 0.0f;
-        for (int64_t j = 0; j < num_classes; ++j) {
-            float prob = out_data[i * num_classes + j];
-            if (prob > max_prob) {
-                max_prob = prob;
-                best_idx = j;
+        for (int64_t i = 0; i < seq_len; ++i) {
+            int best_idx = 0;
+            float max_prob = 0.0f;
+
+            for (int64_t j = 0; j < num_classes; ++j) {
+                float prob = out_data[b * seq_len * num_classes + i * num_classes + j];
+                if (prob > max_prob) {
+                    max_prob = prob;
+                    best_idx = j;
+                }
             }
-        }
-
-        if (best_idx != 0 && best_idx != last_index) {
-            if (best_idx < (int)dictionary_.size()) {
+            if (best_idx != 0 && best_idx != last_index && best_idx < (int)dictionary_.size()) {
                 result += dictionary_[best_idx];
             }
+            last_index = best_idx;
         }
-        last_index = best_idx;
+        results[original_indices[b]] = result;
     }
-    return result;
+
+    return results;
 }
 
 // --- Implementação: UnifiedVisionNode ---
@@ -116,8 +157,6 @@ UnifiedVisionNode::UnifiedVisionNode() : Node("unified_vision_node"), running_(t
     rgb_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/rgb_roi", 10);
     lat_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/lat_roi", 10);
     lon_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/lon_roi", 10);
-
-    // <-- ADICIONADO: Novos Tópicos para o RQT
     head_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/heading_roi", 10);
     height_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/height_roi", 10);
     speed_pub_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/speed_roi", 10);
@@ -127,7 +166,7 @@ UnifiedVisionNode::UnifiedVisionNode() : Node("unified_vision_node"), running_(t
 
     try {
         ocr_ = std::make_shared<TelemetryOcr>("/opt/ocr_models/v3_en_rec.onnx", "/opt/ocr_models/en_dict.txt");
-        RCLCPP_INFO(this->get_logger(), "ONNX CPU OCR Inicializado com Sucesso (v3).");
+        RCLCPP_INFO(this->get_logger(), "ONNX CUDA OCR Inicializado com Sucesso (Batch Mode).");
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "Falha ao carregar OCR: %s", e.what());
     }
@@ -157,8 +196,6 @@ void UnifiedVisionNode::loadParameters() {
     this->declare_parameter<std::vector<int64_t>>("roi_rgb", {81, 61, 478, 361});
     this->declare_parameter<std::vector<int64_t>>("roi_lat", {280, 468, 61, 11});
     this->declare_parameter<std::vector<int64_t>>("roi_lon", {345, 467, 54, 11});
-
-    // <-- ADICIONADO: Placeholders de coordenadas (Ajusta os valores)
     this->declare_parameter<std::vector<int64_t>>("roi_heading", {0, 0, 50, 20});
     this->declare_parameter<std::vector<int64_t>>("roi_height", {0, 0, 50, 20});
     this->declare_parameter<std::vector<int64_t>>("roi_speed", {0, 0, 50, 20});
@@ -247,27 +284,35 @@ void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
     bool height_safe = isRectSafe(height_roi_, frame, "HEIGHT_ROI");
     bool speed_safe = isRectSafe(speed_roi_, frame, "SPEED_ROI");
 
-    // <-- ADICIONADO: Publica os novos recortes para o RQT
     if (lat_safe) publishImage(frame(lat_roi_), lat_pub_, stamp, "bgr8");
     if (lon_safe) publishImage(frame(lon_roi_), lon_pub_, stamp, "bgr8");
     if (head_safe) publishImage(frame(head_roi_), head_pub_, stamp, "bgr8");
     if (height_safe) publishImage(frame(height_roi_), height_pub_, stamp, "bgr8");
     if (speed_safe) publishImage(frame(speed_roi_), speed_pub_, stamp, "bgr8");
 
-    // <-- ADICIONADO: Executa OCR nos novos campos
     if (ocr_) {
         try {
-            if (lat_safe) lat_result = ocr_->recognize(frame(lat_roi_));
-            if (lon_safe) lon_result = ocr_->recognize(frame(lon_roi_));
-            if (head_safe) head_result = ocr_->recognize(frame(head_roi_));
-            if (height_safe) height_result = ocr_->recognize(frame(height_roi_));
-            if (speed_safe) speed_result = ocr_->recognize(frame(speed_roi_));
+            std::vector<cv::Mat> rois_to_infer = {
+                lat_safe ? frame(lat_roi_) : cv::Mat(),
+                lon_safe ? frame(lon_roi_) : cv::Mat(),
+                head_safe ? frame(head_roi_) : cv::Mat(),
+                height_safe ? frame(height_roi_) : cv::Mat(),
+                speed_safe ? frame(speed_roi_) : cv::Mat()
+            };
+
+            std::vector<std::string> results = ocr_->recognizeBatch(rois_to_infer);
+
+            lat_result = results[0];
+            lon_result = results[1];
+            head_result = results[2];
+            height_result = results[3];
+            speed_result = results[4];
+
         } catch (const std::exception& e) {
             logTroubleshooting("Crash na Inferência OCR: " + std::string(e.what()));
         }
     }
 
-    // <-- ADICIONADO: Injeta tudo no JSON final
     json telemetry_json;
     telemetry_json["timestamp"] = stamp.seconds();
     telemetry_json["telemetry"]["latitude"] = lat_result;

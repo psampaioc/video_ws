@@ -14,7 +14,9 @@
 class TelemetryOcr {
 public:
     TelemetryOcr(const std::string& model_path, const std::string& dict_path);
-    std::string recognize(const cv::Mat& roi);
+
+    // <-- FUNÇÃO DE BATCH ATUALIZADA
+    std::vector<std::string> recognizeBatch(const std::vector<cv::Mat>& rois);
 
 private:
     Ort::Env env_;
@@ -26,11 +28,8 @@ private:
 
     std::vector<const char*> input_node_names_;
     std::vector<const char*> output_node_names_;
-    std::vector<int64_t> input_node_dims_;
 
     void loadDictionary(const std::string& dict_path);
-    std::vector<float> preprocess(const cv::Mat& img, int& target_width);
-    std::string postprocess(const float* out_data, const std::vector<int64_t>& out_shape);
 };
 
 class UnifiedVisionNode : public rclcpp::Node {

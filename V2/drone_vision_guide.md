@@ -154,7 +154,15 @@ rqt
 3. `/camera/heading_roi` & `/camera/height_roi` (Bússola e Altitude).
 4. `/camera/hs_roi` & `/camera/vs_roi` (Velocidades).
 
-### Passo 5: Injetar os Dados (Terminal 5)
+
+### Passo 5: Verificar a Taxa de Transferência de Dados (Terminal 5)
+
+```bash
+ros2 topic hz /telemetry/data
+
+```
+
+### Passo 6: Injetar os Dados (Terminal 6)
 
 Se o modo for `"topic"`, arranca a simulação do dataset.
 
