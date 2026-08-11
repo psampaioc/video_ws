@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <opencv2/imgproc.hpp>
 #include <onnxruntime_cxx_api.h>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -284,7 +285,10 @@ void UnifiedVisionNode::topicCallback(const sensor_msgs::msg::Image::SharedPtr m
 }
 
 void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
-    // Novo: Deteção de resolução e aplicação dinâmica do perfil correspondente
+    // Início da medição global
+    auto total_start = std::chrono::high_resolution_clock::now();
+    long ocr_duration = 0;
+
     std::string frame_res = std::to_string(frame.cols) + "x" + std::to_string(frame.rows);
 
     if (!rois_initialized_ || current_resolution_ != frame_res) {
@@ -305,7 +309,6 @@ void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
         }
     }
 
-    // O resto da inferência não muda nada. Usa as ROIs ativas de forma transparente.
     if (isRectSafe(rgb_roi_, frame, "RGB_ROI")) {
         publishImage(frame(rgb_roi_), rgb_pub_, stamp, "bgr8");
     }
@@ -335,7 +338,12 @@ void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
                 speed_safe ? frame(speed_roi_) : cv::Mat()
             };
 
+            auto ocr_start = std::chrono::high_resolution_clock::now();
+            
             std::vector<std::string> results = ocr_->recognizeBatch(rois_to_infer);
+            
+            auto ocr_end = std::chrono::high_resolution_clock::now();
+            ocr_duration = std::chrono::duration_cast<std::chrono::milliseconds>(ocr_end - ocr_start).count();
 
             lat_result = results[0];
             lon_result = results[1];
@@ -359,6 +367,14 @@ void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
     auto msg_tel = std_msgs::msg::String();
     msg_tel.data = telemetry_json.dump();
     telemetry_pub_->publish(msg_tel);
+
+    // Fim da medição global
+    auto total_end = std::chrono::high_resolution_clock::now();
+    long total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(total_end - total_start).count();
+
+    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                         "Performance -> OCR: %ld ms | Ciclo Total: %ld ms", 
+                         ocr_duration, total_duration);
 }
 
 bool UnifiedVisionNode::isRectSafe(const cv::Rect& rect, const cv::Mat& frame, const std::string& roi_name) {
