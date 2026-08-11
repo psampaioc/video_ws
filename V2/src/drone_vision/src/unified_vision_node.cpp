@@ -192,30 +192,43 @@ UnifiedVisionNode::~UnifiedVisionNode() {
 void UnifiedVisionNode::loadParameters() {
     this->declare_parameter<std::string>("input_mode", "hardware");
     this->declare_parameter<std::string>("device_path", "/dev/video4");
-
-    this->declare_parameter<std::vector<int64_t>>("roi_rgb", {81, 61, 478, 361});
-    this->declare_parameter<std::vector<int64_t>>("roi_lat", {280, 468, 61, 11});
-    this->declare_parameter<std::vector<int64_t>>("roi_lon", {345, 467, 54, 11});
-    this->declare_parameter<std::vector<int64_t>>("roi_heading", {0, 0, 50, 20});
-    this->declare_parameter<std::vector<int64_t>>("roi_height", {0, 0, 50, 20});
-    this->declare_parameter<std::vector<int64_t>>("roi_speed", {0, 0, 50, 20});
+    
+    // Novo: Declara as resoluções suportadas
+    this->declare_parameter<std::vector<std::string>>("supported_resolutions", {"1920x1080", "1280x720", "640x480"});
 
     input_mode_ = this->get_parameter("input_mode").as_string();
     device_path_ = this->get_parameter("device_path").as_string();
 
-    auto r_rgb = this->get_parameter("roi_rgb").as_integer_array();
-    auto r_lat = this->get_parameter("roi_lat").as_integer_array();
-    auto r_lon = this->get_parameter("roi_lon").as_integer_array();
-    auto r_head = this->get_parameter("roi_heading").as_integer_array();
-    auto r_height = this->get_parameter("roi_height").as_integer_array();
-    auto r_speed = this->get_parameter("roi_speed").as_integer_array();
+    auto resolutions = this->get_parameter("supported_resolutions").as_string_array();
 
-    rgb_roi_ = cv::Rect(r_rgb[0], r_rgb[1], r_rgb[2], r_rgb[3]);
-    lat_roi_ = cv::Rect(r_lat[0], r_lat[1], r_lat[2], r_lat[3]);
-    lon_roi_ = cv::Rect(r_lon[0], r_lon[1], r_lon[2], r_lon[3]);
-    head_roi_ = cv::Rect(r_head[0], r_head[1], r_head[2], r_head[3]);
-    height_roi_ = cv::Rect(r_height[0], r_height[1], r_height[2], r_height[3]);
-    speed_roi_ = cv::Rect(r_speed[0], r_speed[1], r_speed[2], r_speed[3]);
+    // Novo: Carrega os perfis e armazena na memória do nó
+    for (const auto& res : resolutions) {
+        std::string prefix = "res_" + res + ".";
+        
+        this->declare_parameter<std::vector<int64_t>>(prefix + "roi_rgb", {0,0,0,0});
+        this->declare_parameter<std::vector<int64_t>>(prefix + "roi_lat", {0,0,0,0});
+        this->declare_parameter<std::vector<int64_t>>(prefix + "roi_lon", {0,0,0,0});
+        this->declare_parameter<std::vector<int64_t>>(prefix + "roi_heading", {0,0,0,0});
+        this->declare_parameter<std::vector<int64_t>>(prefix + "roi_height", {0,0,0,0});
+        this->declare_parameter<std::vector<int64_t>>(prefix + "roi_speed", {0,0,0,0});
+
+        auto r_rgb = this->get_parameter(prefix + "roi_rgb").as_integer_array();
+        auto r_lat = this->get_parameter(prefix + "roi_lat").as_integer_array();
+        auto r_lon = this->get_parameter(prefix + "roi_lon").as_integer_array();
+        auto r_head = this->get_parameter(prefix + "roi_heading").as_integer_array();
+        auto r_height = this->get_parameter(prefix + "roi_height").as_integer_array();
+        auto r_speed = this->get_parameter(prefix + "roi_speed").as_integer_array();
+
+        OcrRois profile;
+        profile.rgb = cv::Rect(r_rgb[0], r_rgb[1], r_rgb[2], r_rgb[3]);
+        profile.lat = cv::Rect(r_lat[0], r_lat[1], r_lat[2], r_lat[3]);
+        profile.lon = cv::Rect(r_lon[0], r_lon[1], r_lon[2], r_lon[3]);
+        profile.head = cv::Rect(r_head[0], r_head[1], r_head[2], r_head[3]);
+        profile.height = cv::Rect(r_height[0], r_height[1], r_height[2], r_height[3]);
+        profile.speed = cv::Rect(r_speed[0], r_speed[1], r_speed[2], r_speed[3]);
+
+        roi_profiles_[res] = profile;
+    }
 }
 
 void UnifiedVisionNode::logTroubleshooting(const std::string& msg) {
@@ -271,6 +284,28 @@ void UnifiedVisionNode::topicCallback(const sensor_msgs::msg::Image::SharedPtr m
 }
 
 void UnifiedVisionNode::processFrame(const cv::Mat& frame, rclcpp::Time stamp) {
+    // Novo: Deteção de resolução e aplicação dinâmica do perfil correspondente
+    std::string frame_res = std::to_string(frame.cols) + "x" + std::to_string(frame.rows);
+
+    if (!rois_initialized_ || current_resolution_ != frame_res) {
+        if (roi_profiles_.find(frame_res) != roi_profiles_.end()) {
+            rgb_roi_ = roi_profiles_[frame_res].rgb;
+            lat_roi_ = roi_profiles_[frame_res].lat;
+            lon_roi_ = roi_profiles_[frame_res].lon;
+            head_roi_ = roi_profiles_[frame_res].head;
+            height_roi_ = roi_profiles_[frame_res].height;
+            speed_roi_ = roi_profiles_[frame_res].speed;
+            
+            current_resolution_ = frame_res;
+            rois_initialized_ = true;
+            RCLCPP_INFO(this->get_logger(), "Resolução %s detetada. Perfil de ROIs ativado.", frame_res.c_str());
+        } else {
+            logTroubleshooting("Resolução não suportada (" + frame_res + "). A ignorar frame.");
+            return;
+        }
+    }
+
+    // O resto da inferência não muda nada. Usa as ROIs ativas de forma transparente.
     if (isRectSafe(rgb_roi_, frame, "RGB_ROI")) {
         publishImage(frame(rgb_roi_), rgb_pub_, stamp, "bgr8");
     }

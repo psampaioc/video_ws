@@ -1,10 +1,78 @@
+# ============================================================
+# drone_vision parameters (existing)
+# ============================================================
 /unified_vision_node:
   ros__parameters:
     input_mode: "topic"
     device_path: "/dev/video4"
-    roi_rgb: [80, 60, 480, 360]
-    roi_lat: [280, 467, 62, 11]
-    roi_lon: [344, 467, 59, 12]
-    roi_heading: [210, 467, 23, 12]
-    roi_height: [278, 422, 37, 20]
-    roi_speed: [213, 446, 28, 16]
+    supported_resolutions: ["1920x1080", "1280x720", "640x480"]
+
+    res_1920x1080:
+      roi_rgb: [160, 120, 960, 720]
+      roi_lat: [560, 934, 124, 22] 
+      roi_lon: [688, 934, 118, 24]
+      roi_heading: [420, 934, 46, 24]
+      roi_height: [556, 844, 74, 40]
+      roi_speed: [426, 892, 56, 32]
+
+    res_1280x720:
+      roi_rgb: [106, 80, 640, 480]
+      roi_lat: [373, 622, 82, 15]
+      roi_lon: [458, 622, 78, 16]
+      roi_heading: [280, 622, 30, 16]
+      roi_height: [370, 562, 50, 26]
+      roi_speed: [284, 594, 37, 21]
+
+    res_640x480:
+      roi_rgb: [80, 60, 480, 360]
+      roi_lat: [275, 467, 70, 11]
+      roi_lon: [340, 467, 65, 12]
+      roi_heading: [210, 467, 35, 12] # Largura aumentada de 23 para 35
+      roi_height: [278, 422, 37, 20]
+      roi_speed: [213, 446, 28, 16]
+
+# ============================================================
+# drone_mapper parameters (NEW)
+# ============================================================
+/map_publisher:
+  ros__parameters:
+    pcd_file_path: "config/map_vis.pcd"   # Downsampled for RViz (1M points)
+    map_frame: "map"
+    topic_name: "/map/cloud"
+    publish_once: true
+
+/drone_localization_node:
+  ros__parameters:
+    telemetry_topic: "/telemetry/data"
+    pose_topic: "/map/telemetry_pose"
+    odom_topic: "/map/telemetry_odometry"
+    path_topic: "/map/telemetry_path"
+    status_topic: "/map/telemetry_status"
+    frame_id: "map"
+    child_frame: "drone_reference"
+    utm_zone: 29
+    utm_south: false
+    map_metadata_path: "config/map_metadata.json"
+    enable_map_bounds_check: true
+    enable_jump_gate: true
+    map_z_offset: 0.0
+    map_margin_m: 5.0
+    # 0 = unlimited history kept in memory
+    max_history_points: 0
+    path_min_distance: 0.0
+    latitude_min: 39.0
+    latitude_max: 41.0
+    longitude_min: -9.0
+    longitude_max: -7.0
+    repair_negative_longitude: true
+    height_min: 0.0
+    height_max: 30.0
+    default_height_m: 25.0
+    default_heading_deg: 90.0
+    reported_speed_max: 30.0
+    max_speed_mps: 8.0
+    max_gate_dt: 10.0
+    position_tolerance_m: 1.5
+    xy_variance: 2.25
+    z_variance: 4.0
+    yaw_variance: 0.12

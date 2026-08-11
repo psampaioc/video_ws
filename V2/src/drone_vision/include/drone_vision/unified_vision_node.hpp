@@ -8,8 +8,19 @@
 #include <vector>
 #include <thread>
 #include <atomic>
+#include <map> // Necessário para os perfis dinâmicos
 
 #include <onnxruntime_cxx_api.h>
+
+// Estrutura para os perfis de resolução
+struct OcrRois {
+    cv::Rect rgb;
+    cv::Rect lat;
+    cv::Rect lon;
+    cv::Rect head;
+    cv::Rect height;
+    cv::Rect speed;
+};
 
 class TelemetryOcr {
 public:
@@ -42,13 +53,18 @@ private:
     std::string input_mode_;
     std::string device_path_;
 
-    // ROIs Dinâmicos
+    // ROIs Dinâmicos (Atuais)
     cv::Rect rgb_roi_;
     cv::Rect lat_roi_;
     cv::Rect lon_roi_;
     cv::Rect head_roi_;
     cv::Rect height_roi_;
     cv::Rect speed_roi_;
+
+    // Gestão de Perfis de Resolução
+    std::map<std::string, OcrRois> roi_profiles_;
+    bool rois_initialized_ = false;
+    std::string current_resolution_ = "";
 
     // Hardware Capture
     cv::VideoCapture cap_;

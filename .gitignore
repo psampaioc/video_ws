@@ -51,3 +51,8 @@ rsync_log.txt
 
 # Memory/search index (generated)
 .memsearch/
+
+# Local reference workspace (not part of production packages)
+V2/src/online_drone_localization_jazzy/
+tensorTest.py
+plan.md
