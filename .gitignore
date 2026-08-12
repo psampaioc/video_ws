@@ -43,11 +43,12 @@ dist/
 .venv/
 venv/
 
-# Dataset - personal/private data (videos, images, calibration)
+# Dataset - personal/private data (videos, images, calibration, maps)
 dataset_22-07-26/
 dataset_rgb_tel
 rsync_log.txt
-
+*.pcd
+*.ply
 
 # Memory/search index (generated)
 .memsearch/
@@ -56,5 +57,4 @@ rsync_log.txt
 V2/src/online_drone_localization_jazzy/
 tensorTest.py
 plan.md
-*.pcd
-*.ply
+
