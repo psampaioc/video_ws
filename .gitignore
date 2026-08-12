@@ -56,5 +56,5 @@ rsync_log.txt
 V2/src/online_drone_localization_jazzy/
 tensorTest.py
 plan.md
-V2/src/drone_mapper/config/*.pcd
-V2/src/drone_mapper/config/*.ply
+*.pcd
+*.ply
