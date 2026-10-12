@@ -1,0 +1,29 @@
+services:
+  drone_vision_dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: drone_vision_env:jazzy
+    container_name: ros2_drone_vision_dev
+    network_mode: host
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev:/dev
+    stdin_open: true
+    tty: true
+    volumes:
+      - ..:/workspace:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      DISPLAY: ${DISPLAY}
+      QT_X11_NO_MITSHM: "1"
+      NVIDIA_DRIVER_CAPABILITIES: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, video, utility]

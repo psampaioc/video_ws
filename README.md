@@ -21,3 +21,15 @@ Detailed technical documentation, parameter configurations, and troubleshooting 
 
 * **For V1:** Refer to the guide inside the `V1/` directory.
 * **For V2:** Refer to the `guide.md` inside the `V2/` directory for the active production setup.
+
+## Legacy V2 Docker environment
+
+The V2 vision pipeline uses its own ROS 2 Jazzy + CUDA development container. From this repository, start it with:
+
+```bash
+docker compose -f docker/compose.yaml run --rm --name ros2_drone_vision_dev drone_vision_dev bash
+```
+
+The `dronevision` shell alias starts the same container from any directory; `dronevisionplus` opens another shell in an already-running instance. This is separate from the Matrice Edge Humble container (`djiedge` / `djiedge-run`).
+
+Before building the image, provide the OCR model files locally at `docker/models/v3_en_rec.onnx` and `docker/models/en_dict.txt`. The model files are intentionally excluded from this public repository; obtain them from the project's authorized model source. The Docker build copies them to `/opt/ocr_models`, which is the path used by the V2 vision node.

@@ -1,0 +1,5 @@
+**
+!docker/
+!docker/models/
+!docker/models/v3_en_rec.onnx
+!docker/models/en_dict.txt

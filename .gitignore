@@ -23,9 +23,11 @@ __pycache__/
 .claude/
 CLAUDE.md
 .claude-code/
+AGENTS.md
 
 # Docker
 .dockerignore
+docker/models/
 
 # Local config
 config/local.yaml
